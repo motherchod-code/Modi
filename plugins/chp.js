@@ -1,19 +1,15 @@
 import { Module } from "../lib/plugins.js";
+import axios from "axios";
 
 Module({
   command: "cpost",
   aliases: ["cp"],
   fromMe: true,
-  description: "Smart Channel Post (Text/Image/Audio with fallback)",
+  description: "Channel post (reply + url + text সব support)",
 })(async (message, match) => {
   try {
     if (!match) {
-      return message.send(
-        "❌ Usage:\n" +
-        ".cpost link text\n" +
-        ".cpost link |img_url| caption\n" +
-        ".cpost link |audio_url|"
-      );
+      return message.send("❌ Usage: .cpost link [text/reply/url]");
     }
 
     await message.react("⌛");
@@ -29,76 +25,95 @@ Module({
 
     // 🔍 Extract ID
     const matchLink = link.match(/channel\/([\w\d]+)/);
-    if (!matchLink) {
-      await message.react("❌");
-      return message.send("❌ Link format ভুল");
-    }
-
     const channelId = matchLink[1];
 
-    // 🔑 Get metadata (REAL JID)
+    // 🔑 Get JID
     const meta = await message.client.newsletterMetadata("invite", channelId);
-
-    if (!meta?.id) {
-      await message.react("❌");
-      return message.send("❌ Channel metadata পাওয়া যায়নি");
-    }
-
     const jid = meta.id;
 
-    console.log("CHANNEL JID:", jid);
-
-    // 🎯 Prepare message
     let msg = {};
 
-    if (input.includes("|")) {
-      const parts = input.split("|").map(x => x.trim());
+    // =========================
+    // 🔥 REPLY MEDIA SUPPORT
+    // =========================
+    if (message.reply_message) {
+      const m = message.reply_message;
 
       // 📸 IMAGE
-      if (parts[1]?.match(/\.(jpg|jpeg|png|webp)/i)) {
+      if (m.image) {
+        const buffer = await m.download();
+
         msg = {
-          image: { url: parts[1] },
-          caption: parts[2] || ""
+          image: buffer,
+          caption: input || ""
         };
       }
 
       // 🎵 AUDIO
-      else if (parts[1]?.match(/\.(mp3|wav|m4a)/i)) {
+      else if (m.audio) {
+        const buffer = await m.download();
+
         msg = {
-          audio: { url: parts[1] },
+          audio: buffer,
           mimetype: "audio/mpeg"
         };
-      } else {
-        return message.send("❌ Unsupported media format");
       }
-    } else {
-      // 📝 TEXT
+
+      // 📝 TEXT REPLY
+      else if (m.text) {
+        msg = {
+          text: input || m.text
+        };
+      }
+    }
+
+    // =========================
+    // 🌐 URL MODE
+    // =========================
+    else if (input.includes("|")) {
+      const parts = input.split("|").map(x => x.trim());
+
+      // IMAGE
+      if (parts[1]?.match(/\.(jpg|jpeg|png|webp)/i)) {
+        const img = (await axios.get(parts[1], {
+          responseType: "arraybuffer"
+        })).data;
+
+        msg = {
+          image: img,
+          caption: parts[2] || ""
+        };
+      }
+
+      // AUDIO
+      else if (parts[1]?.match(/\.(mp3|wav|m4a)/i)) {
+        const audio = (await axios.get(parts[1], {
+          responseType: "arraybuffer"
+        })).data;
+
+        msg = {
+          audio: audio,
+          mimetype: "audio/mpeg"
+        };
+      }
+    }
+
+    // =========================
+    // 📝 TEXT ONLY
+    // =========================
+    else {
       msg = { text: input };
     }
 
-    // 🚀 TRY 1: newsletterSendMessage
-    try {
-      await message.client.newsletterSendMessage(jid, msg);
-      await message.react("✅");
-      return message.send("✅ Sent via newsletterSendMessage");
-    } catch (e) {
-      console.log("Primary failed, trying fallback...");
-    }
+    // 🚀 SEND
+    await message.client.newsletterSendMessage(jid, msg);
 
-    // 🔁 TRY 2: sendMessage fallback
-    try {
-      await message.client.sendMessage(jid, msg);
-      await message.react("✅");
-      return message.send("✅ Sent via fallback sendMessage");
-    } catch (err) {
-      console.error("[FINAL ERROR]", err);
-      await message.react("❌");
-      return message.send("⚠️ Failed! Admin/permission/check version");
-    }
+    await message.react("✅");
+    return message.send("✅ Channel post done!");
 
   } catch (err) {
-    console.error("[PLUGIN ERROR]", err);
+    console.error("[ERROR]", err);
     await message.react("❌");
-    message.send("⚠️ Unexpected error");
+    message.send("⚠️ Failed bro");
   }
 });
