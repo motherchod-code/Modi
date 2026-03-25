@@ -23,24 +23,29 @@ Module({
       return message.send("❌ Invalid channel link");
     }
 
-    // 🔍 Extract ID
+    // 🔍 Extract channel ID
     const matchLink = link.match(/channel\/([\w\d]+)/);
+    if (!matchLink) {
+      await message.react("❌");
+      return message.send("❌ Link format ভুল");
+    }
+
     const channelId = matchLink[1];
 
-    // 🔑 Get JID
+    // 🔑 Get real JID
     const meta = await message.client.newsletterMetadata("invite", channelId);
     const jid = meta.id;
 
-    let msg = {};
+    let msg = null;
 
     // =========================
-    // 🔥 REPLY MEDIA SUPPORT
+    // 🔥 REPLY MODE (FIXED)
     // =========================
     if (message.reply_message) {
       const m = message.reply_message;
 
       // 📸 IMAGE
-      if (m.image) {
+      if (m.image || m.mimetype?.startsWith("image")) {
         const buffer = await m.download();
 
         msg = {
@@ -50,12 +55,12 @@ Module({
       }
 
       // 🎵 AUDIO
-      else if (m.audio) {
+      else if (m.audio || m.mimetype?.startsWith("audio")) {
         const buffer = await m.download();
 
         msg = {
           audio: buffer,
-          mimetype: "audio/mpeg"
+          mimetype: m.mimetype || "audio/mpeg"
         };
       }
 
@@ -73,7 +78,7 @@ Module({
     else if (input.includes("|")) {
       const parts = input.split("|").map(x => x.trim());
 
-      // IMAGE
+      // 📸 IMAGE URL
       if (parts[1]?.match(/\.(jpg|jpeg|png|webp)/i)) {
         const img = (await axios.get(parts[1], {
           responseType: "arraybuffer"
@@ -85,7 +90,7 @@ Module({
         };
       }
 
-      // AUDIO
+      // 🎵 AUDIO URL
       else if (parts[1]?.match(/\.(mp3|wav|m4a)/i)) {
         const audio = (await axios.get(parts[1], {
           responseType: "arraybuffer"
@@ -99,21 +104,28 @@ Module({
     }
 
     // =========================
-    // 📝 TEXT ONLY
+    // 📝 TEXT MODE
     // =========================
-    else {
+    if (!msg) {
       msg = { text: input };
     }
 
-    // 🚀 SEND
-    await message.client.newsletterSendMessage(jid, msg);
+    // =========================
+    // 🚀 SEND (DOUBLE SAFE)
+    // =========================
+    try {
+      await message.client.newsletterSendMessage(jid, msg);
+    } catch (e) {
+      // fallback
+      await message.client.sendMessage(jid, msg);
+    }
 
     await message.react("✅");
     return message.send("✅ Channel post done!");
 
   } catch (err) {
-    console.error("[ERROR]", err);
+    console.error("[FINAL ERROR]", err);
     await message.react("❌");
-    message.send("⚠️ Failed bro");
+    message.send("⚠️ Failed! Check admin / version");
   }
 });
