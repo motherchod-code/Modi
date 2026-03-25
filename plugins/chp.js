@@ -5,7 +5,7 @@ Module({
   command: "cpost",
   aliases: ["cp"],
   fromMe: true,
-  description: "Channel post (text + url + reply media support)",
+  description: "Channel post (ultimate fixed version)",
 })(async (message, match) => {
   try {
     if (!match) {
@@ -18,78 +18,52 @@ Module({
     const link = args.shift();
     const input = args.join(" ");
 
-    // Validate link
-    if (!link.includes("whatsapp.com/channel/")) {
-      await message.react("❌");
-      return message.send("Invalid channel link");
-    }
-
     // Extract channel ID
-    const matchLink = link.match(/channel\/([\w\d]+)/);
-    if (!matchLink) {
-      await message.react("❌");
-      return message.send("Invalid link format");
-    }
-
-    const channelId = matchLink[1];
+    const id = link.match(/channel\/([\w\d]+)/)?.[1];
+    if (!id) return message.send("Invalid channel link");
 
     // Get real JID
-    const meta = await message.client.newsletterMetadata("invite", channelId);
+    const meta = await message.client.newsletterMetadata("invite", id);
     const jid = meta.id;
 
     let msg = null;
 
     // =========================
-    // REPLY MODE
+    // 🔥 REPLY MODE (FIXED)
     // =========================
     if (message.reply_message) {
       const m = message.reply_message;
 
-      let buffer = null;
+      let buffer;
 
-      // Try download method 1
       try {
-        if (m.message) {
-          buffer = await message.client.downloadMediaMessage(m.message);
-        }
-      } catch {}
-
-      // Fallback 2
-      if (!buffer) {
+        buffer = await message.client.downloadMediaMessage(m.message);
+      } catch {
         try {
           buffer = await m.download();
         } catch {}
       }
 
-      // Fallback 3 (URL)
-      if (!buffer && m.url) {
-        buffer = (await axios.get(m.url, {
-          responseType: "arraybuffer"
-        })).data;
-      }
+      if (!buffer) return message.send("Media download failed");
 
-      // Image
-      if (m.image || m.mimetype?.startsWith("image")) {
-        if (!buffer) return message.send("Image download failed");
-
+      // IMAGE
+      if (m.mimetype && m.mimetype.startsWith("image")) {
         msg = {
           image: buffer,
           caption: input || ""
         };
       }
 
-      // Audio
-      else if (m.audio || m.mimetype?.startsWith("audio")) {
-        if (!buffer) return message.send("Audio download failed");
-
+      // AUDIO
+      else if (m.mimetype && m.mimetype.startsWith("audio")) {
         msg = {
           audio: buffer,
-          mimetype: m.mimetype || "audio/mpeg",
+          mimetype: "audio/mpeg",
           ptt: false
         };
       }
 
-      // Text reply
+      // TEXT
       else if (m.text) {
         msg = {
           text: input || m.text
@@ -98,16 +72,59 @@ Module({
     }
 
     // =========================
-    // URL MODE (auto detect)
+    // 🔥 URL MODE (FIXED)
     // =========================
-    if (!msg) {
-      const urlMatch = input.match(/https?:\/\/\S+/);
-
-      if (urlMatch) {
-        const url = urlMatch[0];
+    if (!msg && input.includes("http")) {
+      const url = input.match(/https?:\/\/\S+/)?.[0];
+      if (url) {
         const caption = input.replace(url, "").trim();
 
-        // Image URL
+        const res = await axios.get(url, {
+          responseType: "arraybuffer",
+          headers: { "User-Agent": "Mozilla/5.0" }
+        });
+
+        const buffer = res.data;
+
+        // IMAGE
+        if (url.match(/\.(jpg|jpeg|png|webp)/i)) {
+          msg = {
+            image: buffer,
+            caption: caption || ""
+          };
+        }
+
+        // AUDIO
+        else if (url.match(/\.(mp3|wav|m4a)/i)) {
+          msg = {
+            audio: buffer,
+            mimetype: "audio/mpeg"
+          };
+        }
+      }
+    }
+
+    // =========================
+    // TEXT FALLBACK
+    // =========================
+    if (!msg) {
+      msg = { text: input };
+    }
+
+    // =========================
+    // 🚀 SEND (ONLY CORRECT WAY)
+    // =========================
+    await message.client.newsletterSendMessage(jid, msg);
+
+    await message.react("✅");
+    return message.send("Channel post sent");
+
+  } catch (err) {
+    console.error("[CPOST ERROR]", err);
+    await message.react("❌");
+    return message.send("Failed to send");
+  }
+});        // Image URL
         if (url.match(/\.(jpg|jpeg|png|webp)/i)) {
           const img = (await axios.get(url, {
             responseType: "arraybuffer"
