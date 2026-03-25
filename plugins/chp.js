@@ -4,14 +4,14 @@ Module({
   command: "cpost",
   aliases: ["cp"],
   fromMe: true,
-  description: "Send text/image/audio to WhatsApp Channel",
+  description: "Smart Channel Post (Text/Image/Audio with fallback)",
 })(async (message, match) => {
   try {
     if (!match) {
       return message.send(
         "❌ Usage:\n" +
         ".cpost link text\n" +
-        ".cpost link |image_url| caption\n" +
+        ".cpost link |img_url| caption\n" +
         ".cpost link |audio_url|"
       );
     }
@@ -27,7 +27,7 @@ Module({
       return message.send("❌ Invalid channel link");
     }
 
-    // 🔍 Extract channel ID → convert to JID
+    // 🔍 Extract ID
     const matchLink = link.match(/channel\/([\w\d]+)/);
     if (!matchLink) {
       await message.react("❌");
@@ -36,52 +36,69 @@ Module({
 
     const channelId = matchLink[1];
 
-    // 🔄 Convert to JID
-    const jid = channelId + "@newsletter";
+    // 🔑 Get metadata (REAL JID)
+    const meta = await message.client.newsletterMetadata("invite", channelId);
 
-    // 🎯 Detect media type
+    if (!meta?.id) {
+      await message.react("❌");
+      return message.send("❌ Channel metadata পাওয়া যায়নি");
+    }
+
+    const jid = meta.id;
+
+    console.log("CHANNEL JID:", jid);
+
+    // 🎯 Prepare message
+    let msg = {};
+
     if (input.includes("|")) {
       const parts = input.split("|").map(x => x.trim());
 
       // 📸 IMAGE
       if (parts[1]?.match(/\.(jpg|jpeg|png|webp)/i)) {
-        await message.client.sendMessage(jid, {
+        msg = {
           image: { url: parts[1] },
           caption: parts[2] || ""
-        });
-
-        await message.react("✅");
-        return message.send("📸 Image sent to channel!");
+        };
       }
 
       // 🎵 AUDIO
-      if (parts[1]?.match(/\.(mp3|wav|m4a)/i)) {
-        await message.client.sendMessage(jid, {
+      else if (parts[1]?.match(/\.(mp3|wav|m4a)/i)) {
+        msg = {
           audio: { url: parts[1] },
-          mimetype: "audio/mpeg",
-          fileName: "song.mp3"
-        });
-
-        await message.react("✅");
-        return message.send("🎵 Audio sent to channel!");
+          mimetype: "audio/mpeg"
+        };
+      } else {
+        return message.send("❌ Unsupported media format");
       }
-
-      return message.send("❌ Unsupported media format");
+    } else {
+      // 📝 TEXT
+      msg = { text: input };
     }
 
-    // 📝 TEXT MESSAGE
-    await message.client.sendMessage(jid, {
-      text: input
-    });
+    // 🚀 TRY 1: newsletterSendMessage
+    try {
+      await message.client.newsletterSendMessage(jid, msg);
+      await message.react("✅");
+      return message.send("✅ Sent via newsletterSendMessage");
+    } catch (e) {
+      console.log("Primary failed, trying fallback...");
+    }
 
-    await message.react("✅");
-
-    return message.send("📝 Text sent to channel!");
+    // 🔁 TRY 2: sendMessage fallback
+    try {
+      await message.client.sendMessage(jid, msg);
+      await message.react("✅");
+      return message.send("✅ Sent via fallback sendMessage");
+    } catch (err) {
+      console.error("[FINAL ERROR]", err);
+      await message.react("❌");
+      return message.send("⚠️ Failed! Admin/permission/check version");
+    }
 
   } catch (err) {
-    console.error("[CHANNEL POST ERROR]", err);
+    console.error("[PLUGIN ERROR]", err);
     await message.react("❌");
-
-    message.send("⚠️ Failed! Permission বা link সমস্যা");
+    message.send("⚠️ Unexpected error");
   }
 });
