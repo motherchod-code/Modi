@@ -1,38 +1,87 @@
 import { Module } from "../lib/plugins.js";
 
 Module({
-  command: "chp",
-  description: "Send message to WhatsApp channel",
-})(async (message, match, m, client) => {
+  command: "cpost",
+  aliases: ["cp"],
+  fromMe: true,
+  description: "Send text/image/audio to WhatsApp Channel",
+})(async (message, match) => {
   try {
     if (!match) {
-      return message.send("❌ Use:\n.chp message 123@newsletter");
+      return message.send(
+        "❌ Usage:\n" +
+        ".cpost link text\n" +
+        ".cpost link |image_url| caption\n" +
+        ".cpost link |audio_url|"
+      );
     }
 
-    const args = match.split(" ");
-    
-    if (args.length < 2) {
-      return message.send("❌ Format:\n.chp hello 123@newsletter");
+    await message.react("⌛");
+
+    let [link, ...rest] = match.trim().split(" ");
+    let input = rest.join(" ");
+
+    // 🔗 Validate link
+    if (!link.includes("whatsapp.com/channel/")) {
+      await message.react("❌");
+      return message.send("❌ Invalid channel link");
     }
 
-    // last word = JID
-    const jid = args[args.length - 1];
-    
-    // rest = message
-    const text = args.slice(0, -1).join(" ");
-
-    if (!jid.includes("@newsletter")) {
-      return message.send("❌ Invalid Channel JID!");
+    // 🔍 Extract channel ID → convert to JID
+    const matchLink = link.match(/channel\/([\w\d]+)/);
+    if (!matchLink) {
+      await message.react("❌");
+      return message.send("❌ Link format ভুল");
     }
 
-    await client.sendMessage(jid, {
-      text: text,
+    const channelId = matchLink[1];
+
+    // 🔄 Convert to JID
+    const jid = channelId + "@newsletter";
+
+    // 🎯 Detect media type
+    if (input.includes("|")) {
+      const parts = input.split("|").map(x => x.trim());
+
+      // 📸 IMAGE
+      if (parts[1]?.match(/\.(jpg|jpeg|png|webp)/i)) {
+        await message.client.sendMessage(jid, {
+          image: { url: parts[1] },
+          caption: parts[2] || ""
+        });
+
+        await message.react("✅");
+        return message.send("📸 Image sent to channel!");
+      }
+
+      // 🎵 AUDIO
+      if (parts[1]?.match(/\.(mp3|wav|m4a)/i)) {
+        await message.client.sendMessage(jid, {
+          audio: { url: parts[1] },
+          mimetype: "audio/mpeg",
+          fileName: "song.mp3"
+        });
+
+        await message.react("✅");
+        return message.send("🎵 Audio sent to channel!");
+      }
+
+      return message.send("❌ Unsupported media format");
+    }
+
+    // 📝 TEXT MESSAGE
+    await message.client.sendMessage(jid, {
+      text: input
     });
 
-    return message.send("✅ Message sent to channel!");
+    await message.react("✅");
+
+    return message.send("📝 Text sent to channel!");
 
   } catch (err) {
-    console.log(err);
-    return message.send("❌ Failed to send!");
+    console.error("[CHANNEL POST ERROR]", err);
+    await message.react("❌");
+
+    message.send("⚠️ Failed! Permission বা link সমস্যা");
   }
 });
