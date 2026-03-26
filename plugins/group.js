@@ -309,79 +309,7 @@ Module({
   }
 });
 
-Module({
-  command: "kick",
-  package: "group",
-  aliases: ["remove"],
-  description: "Remove member from group",
-  usage: ".kick <reply|tag>",
-})(async (message) => {
-  try {
-    if (!(await checkPermissions(message))) return;
 
-    const jids = extractMultipleJids(message);
-    if (jids.length === 0) {
-      return message.send("❌ _Tag or reply to user(s) to kick_");
-    }
-
-    const baileys = await import("baileys");
-    const { jidNormalizedUser } = baileys;
-    const botJid = jidNormalizedUser(message.conn.user.id);
-    const validJids = [];
-    const mentions = [];
-
-    for (const jid of jids) {
-      // Check if trying to kick bot
-      if (areJidsSame(message, jid, botJid)) {
-        await message.send("❌ _Cannot kick myself_");
-        continue;
-      }
-
-      // Check if trying to kick owner
-      if (areJidsSame(message, jid, message.groupOwner)) {
-        await message.send("❌ _Cannot kick the group owner_");
-        continue;
-      }
-
-      // Check if trying to kick admin
-      const isTargetAdmin = message.groupAdmins.some((adminId) =>
-        areJidsSame(message, adminId, jid)
-      );
-
-      if (isTargetAdmin && !message.isfromMe) {
-        await message.send(`❌ _Cannot kick admin @${jid.split("@")[0]}_`, {
-          mentions: [jid],
-        });
-        continue;
-      }
-
-      validJids.push(jid);
-      mentions.push(jid);
-    }
-
-    if (validJids.length === 0) {
-      return message.send("❌ _No valid users to kick_");
-    }
-
-    await message.react("⏳");
-    await message.removeParticipant(validJids);
-    await message.react("✅");
-
-    const kickedList = validJids
-      .map((jid) => `@${jid.split("@")[0]}`)
-      .join(", ");
-    await message.reply(
-      `✅ *Members Removed*\n\n${kickedList} ${
-        validJids.length > 1 ? "have" : "has"
-      } been removed from the group`,
-      { mentions }
-    );
-  } catch (error) {
-    console.error("Kick command error:", error);
-    await message.react("❌");
-    await message.send("❌ _Failed to remove member(s)_");
-  }
-});
 
 Module({
   command: "promote",
