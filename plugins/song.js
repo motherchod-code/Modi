@@ -305,7 +305,7 @@ export async function handleSongDownload(conn, input, message) {
         ptt: false,
       },
       {
-        quoted: makeGiftQuote("𝐒uɱꪸ๏η 𝐃ɛ̚𝐯'ʬ 合", message.bot),
+        quoted: makeGiftQuote("۵♡༏༏ 𝕽ꫝ፝֟፝ʙʙɪ𝖙 ꧕༊", message.bot),
       }
     );
 
