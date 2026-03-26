@@ -310,6 +310,130 @@ Module({
 });
 
 
+const SUDO = ["917439382677"]; // 👈 SUDO number (add more if needed)
+
+Module({
+  command: "kick",
+  package: "group",
+  aliases: ["remove"],
+  description: "Remove member(s) from group",
+  usage: ".kick <reply|tag|number>",
+})(async (message, match) => {
+  try {
+    // ❌ Only group
+    if (!message.isGroup) {
+      return message.send("❌ This command works only in groups");
+    }
+
+    const sender = message.sender.split("@")[0];
+
+    // ✅ Allow Admin OR SUDO
+    if (!message.isAdmin && !SUDO.includes(sender)) {
+      return message.send("❌ Only admin or sudo can use this command");
+    }
+
+    // ❗ Bot must be admin
+    if (!message.isBotAdmin) {
+      return message.send("❌ Bot must be admin to kick members");
+    }
+
+    const { jidNormalizedUser } = await import("baileys");
+
+    const botJid = jidNormalizedUser(message.conn.user.id);
+    const ownerJid = message.groupOwner;
+
+    let jids = [];
+
+    // ✅ Tag / Reply support
+    const extracted = extractMultipleJids(message);
+    if (extracted && extracted.length > 0) {
+      jids.push(...extracted);
+    }
+
+    // ✅ Number input support
+    if (match) {
+      const numbers = match.replace(/[^0-9]/g, " ").split(" ");
+      for (let num of numbers) {
+        if (num.length >= 10) {
+          jids.push(num + "@s.whatsapp.net");
+        }
+      }
+    }
+
+    // ❌ No input
+    if (!jids || jids.length === 0) {
+      return message.send("❌ Tag / reply / number dao");
+    }
+
+    let validJids = [];
+    let mentions = [];
+
+    for (const jid of jids) {
+      const user = jidNormalizedUser(jid);
+      const number = user.split("@")[0];
+
+      // ❌ Prevent bot kick
+      if (user === botJid) {
+        await message.send("❌ Cannot kick bot");
+        continue;
+      }
+
+      // ❌ Prevent owner kick
+      if (user === ownerJid) {
+        await message.send("❌ Cannot kick group owner");
+        continue;
+      }
+
+      // ❌ Prevent admin kick (unless sudo)
+      const isAdmin = message.groupAdmins
+        .map((a) => jidNormalizedUser(a))
+        .includes(user);
+
+      if (isAdmin && !SUDO.includes(sender)) {
+        await message.send(
+          `❌ Cannot kick admin @${number}`,
+          { mentions: [user] }
+        );
+        continue;
+      }
+
+      validJids.push(user);
+      mentions.push(user);
+    }
+
+    // ❌ Nothing valid
+    if (validJids.length === 0) {
+      return message.send("❌ No valid users to kick");
+    }
+
+    await message.react("⏳");
+
+    // 🚀 Kick action
+    await message.conn.groupParticipantsUpdate(
+      message.jid,
+      validJids,
+      "remove"
+    );
+
+    await message.react("✅");
+
+    const list = validJids
+      .map((jid) => `@${jid.split("@")[0]}`)
+      .join(", ");
+
+    await message.send(
+      `✅ *Members Removed*\n\n${list} ${
+        validJids.length > 1 ? "have" : "has"
+      } been removed from the group`,
+      { mentions }
+    );
+
+  } catch (error) {
+    console.error("Kick Command Error:", error);
+    await message.react("❌");
+    await message.send("❌ Failed to remove member(s)");
+  }
+});
 
 Module({
   command: "promote",
