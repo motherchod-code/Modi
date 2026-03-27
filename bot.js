@@ -668,27 +668,28 @@ export default async function initializeTelegramBot(manager) {
       } in ${chatId}`
     );
 
-    // ── /start ────────────────────────────────────────────────────────────────
-    if (cmd === "start") {
-      if (isPrivate(msg)) return redirectToGroup(chatId, replyId);
-      if (!isAllowedGroup(msg)) return;
-      return safeReply(
-        chatId,
-        [
-          `   ✨ ${F("X-KIRA BOT")}`,
-          ``,
-          `🍉 ${F("Fast & secure WhatsApp pairing.")}`,
-          ``,
-          `📌 ${F("Generate your pair code:")}`,
-          `<code>/pair +91700393888</code>`,
-          ``,
-          `📖 ${F("See all commands:")} <code>/help</code>`,
-          ``,
-          `🌻 ${F("Enjoy — stay safe!")} ☘️`,
-        ].join("\n"),
-        { reply_to_message_id: replyId }
-      );
-    }
+    /// ── /start ────────────────────────────────────────────────────────────────
+if (cmd === "start") {
+  if (isPrivate(msg)) return redirectToGroup(chatId, replyId);
+  if (!isAllowedGroup(msg)) return;
+
+  return safeReply(
+    chatId,
+    [
+      `🌷🌍 ${F('𝐖ᴇʟᴄᴏᴍᴇ 𝐓ᴏ "𝐑ᴀʙʙɪᴛ -𝐌ɪɴɪ/𝐗ᴍᴅ" 🦩🌼')}`,
+      `●─────────────────●`,
+      ``,
+      `${F("𝖦𝖾𝗇𝖾𝗋𝖺𝗍𝖾 𝗒𝗈𝗎𝗋 𝗉𝖺𝗂𝗋 𝖼𝗈𝖽𝖾 𝖿𝖺𝗌𝗍 & 𝗌𝖾𝖼𝗎𝗋𝖾𝗅𝗒.")}`,
+      ``,
+      `📌 ${F("𝖴𝗌𝖺𝗀𝖾:")} <code>/pair +91700393888</code>`,
+      ``,
+      `🌻 ${F("𝖤𝗇𝗃𝗈𝗒 — 𝗌𝗍𝖺𝗒 𝖼𝗈𝗓𝗒 𝖺𝗇𝖽 𝗌𝖺𝖿𝖾!")} ☘`,
+      ``,
+      `●─────────────────●`,
+    ].join("\n"),
+    { reply_to_message_id: replyId }
+  );
+}
 
     // ── /help ────────────────────────────────────────────────────────────────
     if (cmd === "help") {
@@ -714,37 +715,44 @@ export default async function initializeTelegramBot(manager) {
         `🏓 <b>Pong!</b>\n⚡ <b>${ms}ms</b>`
       );
     }
+// ── /pair ────────────────────────────────────────────────────────────────
+if (cmd === "pair") {
+  if (isPrivate(msg)) return redirectToGroup(chatId, replyId);
+  if (!isAllowedGroup(msg)) return;
 
-    // ── /pair ────────────────────────────────────────────────────────────────
-    if (cmd === "pair") {
-      if (isPrivate(msg)) return redirectToGroup(chatId, replyId);
-      if (!isAllowedGroup(msg)) return;
+  if (!args) {
+    return safeReply(
+      chatId,
+      [
+        `🛑 <b>${F("𝐔sᴀɢᴇ ɢᴜɪᴅᴇ")}</b>`,
+        `━━━━━━━━━━━━━━━━━━`,
+        ``,
+        `${F("𝐄ɴᴛᴇʀ ʏᴏᴜʀ ɴᴜᴍʙᴇʀ ʟɪᴋᴇ ᴛʜɪs:")}`,
+        ``,
+        `📌 <code>/pair +91700393888</code>`,
+        `📌 <code>/pair 91700393888</code>`,
+        ``,
+        `${F("💡 𝐀ʟᴡᴀʏs ɪɴᴄʟᴜᴅᴇ ʏᴏᴜʀ ᴄᴏᴜɴᴛʀʏ ᴄᴏᴅᴇ 🌍")}`,
+        ``,
+        `━━━━━━━━━━━━━━━━━━`,
+      ].join("\n"),
+      { reply_to_message_id: replyId }
+    );
+  }
 
-      if (!args) {
-        return safeReply(
-          chatId,
-          [
-            `🛑 <b>${F("Usage")}</b>`,
-            ``,
-            `<code>/pair +91700393888</code>`,
-            `<code>/pair 91700393888</code>`,
-            ``,
-            `💡 ${F("Include your country code.")}`,
-          ].join("\n"),
-          { reply_to_message_id: replyId }
-        );
-      }
-
-      const digits = args.replace(/\D/g, "");
-      if (!digits || digits.length < 6) {
-        return safeReply(
-          chatId,
-          `❌ ${F("Invalid number.")} ${F(
-            "Example:"
-          )} <code>/pair +917003816486</code>`,
-          { reply_to_message_id: replyId }
-        );
-      }
+  const digits = args.replace(/\D/g, "");
+  if (!digits || digits.length < 6) {
+    return safeReply(
+      chatId,
+      [
+        `❌ ${F("𝐈ɴᴠᴀʟɪᴅ ɴᴜᴍʙᴇʀ!")}`,
+        ``,
+        `${F("📌 𝐄xᴀᴍᴘʟᴇ:")} <code>/pair +917003816486</code>`,
+      ].join("\n"),
+      { reply_to_message_id: replyId }
+    );
+  }
+}
 
       // FIX #8: rate limit per user
       const userId = msg.from?.id || msg.sender_chat?.id;
@@ -953,118 +961,144 @@ export default async function initializeTelegramBot(manager) {
       }
     }
 
-    // ── /c — shell command (admin only) ──────────────────────────────────────
-    // FIX #5: strict admin guard before ANY shell execution
-    if (cmd === "c") {
-      if (!isAllowedGroup(msg)) return;
-      if (!(await isAdmin(msg))) {
-        return safeReply(
-          chatId,
-          `🚫 <b>${F("Admins Only")}</b>\n\n${F(
-            "Shell access is restricted to group admins."
-          )}`,
-          { reply_to_message_id: replyId }
-        );
-      }
+    // ── /c ────────────────────────────────────────────────────────────────
+if (cmd === "c") {
 
-      const rawCmd = (args || "").trim();
-      if (!rawCmd) {
-        return safeReply(
-          chatId,
-          `ℹ️ <b>${F(
-            "Usage"
-          )}</b>\n<code>/c git pull</code>\n<code>/c pm2 list</code>\n<code>/c df -h</code>`,
-          { reply_to_message_id: replyId }
-        );
-      }
+  // ❌ Only private chat
+  if (msg.chat.type !== "private") {
+    return safeReply(
+      chatId,
+      `🚫 <b>${F("𝐏ʀɪᴠᴀᴛᴇ ᴏɴʟʏ")}</b>\n\n${F("𝐔sᴇ ᴛʜɪs ᴄᴏᴍᴍᴀɴᴅ ɪɴ ᴘᴇʀsᴏɴᴀʟ ᴄʜᴀᴛ.")}`,
+      { reply_to_message_id: replyId }
+    );
+  }
 
-      const MAX_LINES = 50;
-      const TIMEOUT_MS = 30_000;
-      const MAX_TEXT_CHARS = 1800;
+  // 🔐 Owner ID (Telegram)
+  const OWNER_ID = 123456789; // 👉 এখানে তোমার Telegram ID দাও
 
-      await safeReply(
+  if (msg.from.id !== OWNER_ID) {
+    return safeReply(
+      chatId,
+      `🚫 <b>${F("𝐀ᴄᴄᴇss ᴅᴇɴɪᴇᴅ")}</b>\n\n${F("𝐎ɴʟʏ ᴏᴡɴᴇʀ ᴄᴀɴ ᴜsᴇ ᴛʜɪs.")}`,
+      { reply_to_message_id: replyId }
+    );
+  }
+
+  const rawCmd = (args || "").trim();
+
+  if (!rawCmd) {
+    return safeReply(
+      chatId,
+      [
+        `ℹ️ <b>${F("𝐔sᴀɢᴇ")}</b>`,
+        `━━━━━━━━━━━━━━━━━━`,
+        ``,
+        `<code>/c git pull</code>`,
+        `<code>/c pm2 list</code>`,
+        `<code>/c df -h</code>`,
+        ``,
+        `━━━━━━━━━━━━━━━━━━`,
+      ].join("\n"),
+      { reply_to_message_id: replyId }
+    );
+  }
+
+  const MAX_LINES = 50;
+  const TIMEOUT_MS = 30000;
+  const MAX_TEXT_CHARS = 1800;
+
+  await safeReply(
+    chatId,
+    `⚙️ <b>${F("𝐄xᴇᴄᴜᴛɪɴɢ...")}</b>\n<code>${esc(rawCmd)}</code>`,
+    { reply_to_message_id: replyId }
+  );
+
+  const lines = [];
+  let killed = false;
+
+  const child = spawn("bash", ["-lc", rawCmd], { env: process.env });
+
+  const killTimer = setTimeout(() => {
+    killed = true;
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  }, TIMEOUT_MS);
+
+  const pushLines = (chunk, src) => {
+    chunk
+      .toString()
+      .split(/\r?\n/)
+      .forEach((ln) => {
+        if (ln && lines.length < MAX_LINES) {
+          lines.push(src === "err" ? `[ERR] ${ln}` : ln);
+        }
+      });
+  };
+
+  child.stdout.on("data", (c) => pushLines(c, "out"));
+  child.stderr.on("data", (c) => pushLines(c, "err"));
+
+  child.on("error", async (err) => {
+    clearTimeout(killTimer);
+    await safeReply(
+      chatId,
+      `❌ ${F("𝐒ᴘᴀᴡɴ ᴇʀʀᴏʀ:")} ${esc(err.message)}`,
+      { reply_to_message_id: replyId }
+    );
+  });
+
+  child.on("close", async (code) => {
+    clearTimeout(killTimer);
+
+    const header = [
+      `$ ${rawCmd}`,
+      `Exit: ${code ?? "null"}${killed ? " (timeout)" : ""}`,
+      "─".repeat(30),
+    ].join("\n");
+
+    const payload = (header + "\n" + lines.join("\n")).trim();
+
+    if (!payload || lines.length === 0) {
+      return safeReply(
         chatId,
-        `⚙️ <b>${F("Executing...")}</b>\n<code>${esc(rawCmd)}</code>`,
+        `⚠️ ${F("𝐍ᴏ ᴏᴜᴛᴘᴜᴛ ᴘʀᴏᴅᴜᴄᴇᴅ.")}`,
         { reply_to_message_id: replyId }
       );
+    }
 
-      const lines = [];
-      let killed = false;
-      const child = spawn("bash", ["-lc", rawCmd], { env: process.env });
-      const killTimer = setTimeout(() => {
-        killed = true;
-        try {
-          child.kill("SIGKILL");
-        } catch {}
-      }, TIMEOUT_MS);
+    // 📄 Large output → file
+    if (payload.length > MAX_TEXT_CHARS || lines.length >= MAX_LINES) {
+      const tmpPath = path.join(os.tmpdir(), `cmd_${Date.now()}.txt`);
 
-      const pushLines = (chunk, src) => {
-        chunk
-          .toString()
-          .split(/\r?\n/)
-          .forEach((ln) => {
-            if (ln && lines.length < MAX_LINES)
-              lines.push(src === "err" ? `[ERR] ${ln}` : ln);
-          });
-      };
+      try {
+        await fs.promises.writeFile(tmpPath, payload, "utf8");
 
-      child.stdout.on("data", (c) => pushLines(c, "out"));
-      child.stderr.on("data", (c) => pushLines(c, "err"));
+        await tbot.sendDocument(chatId, tmpPath, {
+          caption: `📄 <code>${esc(rawCmd)}</code> · exit <b>${code}</b>`,
+          parse_mode: "HTML",
+          reply_to_message_id: replyId,
+        });
 
-      child.on("error", async (err) => {
-        clearTimeout(killTimer);
+      } catch (e) {
         await safeReply(
           chatId,
-          `❌ ${F("Spawn error:")} ${esc(String(err.message))}`,
+          `⚠️ ${F("𝐎ᴜᴛᴘᴜᴛ ᴘʀᴇᴠɪᴇᴡ:")}\n<code>${esc(payload.slice(0, 1500))}</code>`,
           { reply_to_message_id: replyId }
         );
+      } finally {
+        fs.promises.unlink(tmpPath).catch(() => {});
+      }
+
+    } else {
+      await safeReply(chatId, `<pre>${esc(payload)}</pre>`, {
+        reply_to_message_id: replyId,
       });
-
-      child.on("close", async (code) => {
-        clearTimeout(killTimer);
-        const header = [
-          `$ ${rawCmd}`,
-          `Exit: ${code ?? "null"}${killed ? " (killed — timeout)" : ""}`,
-          "─".repeat(30),
-        ].join("\n");
-
-        const payload = (header + "\n" + lines.join("\n")).trim();
-        if (!payload || lines.length === 0) {
-          return safeReply(chatId, `⚠️ ${F("No output produced.")}`, {
-            reply_to_message_id: replyId,
-          });
-        }
-
-        if (payload.length > MAX_TEXT_CHARS || lines.length >= MAX_LINES) {
-          // Send as file
-          const tmpPath = path.join(os.tmpdir(), `cmd_${Date.now()}.txt`);
-          try {
-            await fs.promises.writeFile(tmpPath, payload, "utf8");
-            await tbot.sendDocument(chatId, tmpPath, {
-              caption: `📄 <code>${esc(rawCmd)}</code> · exit <b>${code}</b>`,
-              parse_mode: "HTML",
-              reply_to_message_id: replyId,
-            });
-          } catch (e) {
-            await safeReply(
-              chatId,
-              `⚠️ ${F("Output preview:")}\n<code>${esc(
-                payload.slice(0, 1500)
-              )}</code>`,
-              { reply_to_message_id: replyId }
-            );
-          } finally {
-            fs.promises.unlink(tmpPath).catch(() => {});
-          }
-        } else {
-          await safeReply(chatId, `<pre>${esc(payload)}</pre>`, {
-            reply_to_message_id: replyId,
-          });
-        }
-      });
-
-      return;
     }
+  });
+
+  return;
+}
 
     // ── Unknown command fallback ──────────────────────────────────────────────
     if (isAllowedGroup(msg)) {
