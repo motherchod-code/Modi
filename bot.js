@@ -974,7 +974,7 @@ if (cmd === "c") {
   }
 
   // 🔐 Owner ID (Telegram)
-  const OWNER_ID = 123456789; // 👉 এখানে তোমার Telegram ID দাও
+  const OWNER_ID = 1962244896; // 👉 এখানে তোমার Telegram ID দাও
 
   if (msg.from.id !== OWNER_ID) {
     return safeReply(
