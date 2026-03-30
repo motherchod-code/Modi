@@ -1,18 +1,17 @@
-// plugins/kickall.mjs
 import { Module } from "../lib/plugins.js";
 
 /**
  * Try to obtain group metadata from common properties/methods.
  * Returns null if not available.
  */
-async function getGroupMetadata(message) {
-  // If message already has metadata (some frameworks populate it)
-  if (message.groupMetadata) return message.groupMetadata;
+async function getGroupMetadata(message, targetJid) {
+  // If message already has metadata and no custom JID, use it
+  if (message.groupMetadata && !targetJid) return message.groupMetadata;
 
   // Try connection-level API: conn.groupMetadata(jid)
   try {
     if (typeof message.conn?.groupMetadata === "function") {
-      const md = await message.conn.groupMetadata(message.from);
+      const md = await message.conn.groupMetadata(targetJid);
       if (md) return md;
     }
   } catch (e) {}
@@ -24,7 +23,7 @@ async function getGroupMetadata(message) {
       if (all) {
         // some libs return an object keyed by jid
         const found = Object.values(all).find(
-          (g) => g?.id === message.from || g?.jid === message.from
+          (g) => g?.id === targetJid || g?.jid === targetJid
         );
         if (found) return found;
       }
@@ -66,22 +65,14 @@ function normalizeParticipants(md) {
 }
 
 /** Helper to call the group's participants update API */
-async function removeParticipants(message, jidList) {
+async function removeParticipants(message, targetJid, jidList) {
   // preferred: message.conn.groupParticipantsUpdate
   if (typeof message.conn?.groupParticipantsUpdate === "function") {
-    return message.conn.groupParticipantsUpdate(
-      message.from,
-      jidList,
-      "remove"
-    );
+    return message.conn.groupParticipantsUpdate(targetJid, jidList, "remove");
   }
   // fallback: message.client.groupParticipantsUpdate
   if (typeof message.client?.groupParticipantsUpdate === "function") {
-    return message.client.groupParticipantsUpdate(
-      message.from,
-      jidList,
-      "remove"
-    );
+    return message.client.groupParticipantsUpdate(targetJid, jidList, "remove");
   }
   // No supported API found
   throw new Error("No groupParticipantsUpdate method found on conn/client");
@@ -90,8 +81,8 @@ async function removeParticipants(message, jidList) {
 Module({
   command: "kickall",
   package: "group",
-  description: "Kick all non-admin users at once (no safety confirmation)",
-})(async (message) => {
+  description: "Kick all non-admin users at once. Usage: .kickall OR .kickall <group_jid>",
+})(async (message, match) => {
   // ensure we have group info in message object if possible
   try {
     if (typeof message.loadGroupInfo === "function")
@@ -100,12 +91,16 @@ Module({
     // ignore
   }
 
-  if (!message.isGroup) return message.send("❌ Group only");
+  // Determine target JID — match দিলে সেটা, না দিলে current group
+  const matchJid = match?.trim();
+  const targetJid = matchJid?.endsWith("@g.us") ? matchJid : message.from;
+
+  if (!targetJid?.endsWith("@g.us")) return message.send("❌ Group only");
   if (!message.isAdmin && !message.isFromMe)
     return message.send("❌ Admin only");
   if (!message.isBotAdmin) return message.send("❌ Bot must be admin");
 
-  const md = await getGroupMetadata(message);
+  const md = await getGroupMetadata(message, targetJid);
   if (!md) return message.send("❌ No participants found");
 
   const participants = normalizeParticipants(md);
@@ -131,7 +126,7 @@ Module({
   if (!targets.length) return message.send("✅ No non-admin users");
 
   try {
-    await removeParticipants(message, targets);
+    await removeParticipants(message, targetJid, targets);
     // We don't cache here (cache removed) — just report result
     await message.send(`✅ Kicked ${targets.length} users in ONE action`);
   } catch (err) {
