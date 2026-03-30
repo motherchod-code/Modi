@@ -1487,3 +1487,37 @@ _Use .command to see usage details_`;
     await message.send("❌ _Failed to show help_");
   }
 });
+
+
+Module({
+  command: "gjid",
+  package: "group",
+  aliases: ["groupjids", "getjid"],
+  description: "Get all group JIDs the bot is participating in",
+  usage: ".gjid",
+})(async (message) => {
+  try {
+    const groups = await message.conn.groupFetchAllParticipating();
+    const groupList = Object.values(groups);
+
+    if (groupList.length === 0) {
+      return message.send("ℹ️ _Bot is not in any groups_");
+    }
+
+    let reply = `╭━━━「 *GROUP JID LIST* 」━━━╮\n┃\n`;
+    reply += `┃ 🔥 Total Groups: ${groupList.length}\n┃\n`;
+
+    groupList.forEach((g, i) => {
+      reply += `┃ ${i + 1}. *${g.subject}*\n`;
+      reply += `┃ 🆔 \`${g.id}\`\n┃\n`;
+    });
+
+    reply += `╰━━━━━━━━━━━━━━━━━━╯`;
+
+    await message.send(reply);
+  } catch (err) {
+    console.error("gjid command error:", err);
+    await message.react("❌");
+    await message.send("❌ _Error fetching group JIDs_");
+  }
+});
