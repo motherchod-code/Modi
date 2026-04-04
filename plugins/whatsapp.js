@@ -2,11 +2,8 @@
 import { Module } from "../lib/plugins.js";
 import config from "../config.js";
 import { getTheme } from "../Themes/themes.js";
-import axios from "axios";
 // static baileys helpers (static import as requested)
-import { jidNormalizedUser } from "baileys";
-// some baileys releases don't export `copyNForward` — use runtime fallback
-let baileysCopyNForward = null;
+import { jidNormalizedUser, areJidsSame } from "baileys";
 
 const theme = getTheme();
 
@@ -46,7 +43,13 @@ Module({
     }
 
     await message.react("⏳");
-    await message.blockUser(jid);
+    if (typeof message.conn.updateBlockStatus === "function") {
+      await message.conn.updateBlockStatus(jid, "block");
+    } else if (typeof message.blockUser === "function") {
+      await message.blockUser(jid);
+    } else {
+      throw new Error("Block method not available");
+    }
     await message.react("✅");
     await message.send(
       `✅ User blocked\n\n@${jid.split("@")[0]} has been blocked.`,
@@ -83,7 +86,13 @@ Module({
     }
 
     await message.react("⏳");
-    await message.unblockUser(jid);
+    if (typeof message.conn.updateBlockStatus === "function") {
+      await message.conn.updateBlockStatus(jid, "unblock");
+    } else if (typeof message.unblockUser === "function") {
+      await message.unblockUser(jid);
+    } else {
+      throw new Error("Unblock method not available");
+    }
     await message.react("✅");
     await message.send(
       `✅ User unblocked\n\n@${jid.split("@")[0]} has been unblocked.`,
@@ -149,7 +158,11 @@ Module({
     let failed = 0;
     for (const jid of blocklist) {
       try {
-        await message.unblockUser(jid);
+        if (typeof message.conn.updateBlockStatus === "function") {
+          await message.conn.updateBlockStatus(jid, "unblock");
+        } else if (typeof message.unblockUser === "function") {
+          await message.unblockUser(jid);
+        }
         unblocked++;
         await new Promise((r) => setTimeout(r, 500));
       } catch (e) {
@@ -177,25 +190,21 @@ Module({
 })(async (message, match) => {
   try {
     if (!message.isfromMe) return message.send(theme.isfromMe);
-    let buffer = null;
+    let img = null;
     if (match && match.startsWith("http")) {
-      await message.react("⏳");
-      const res = await axios.get(match, {
-        responseType: "arraybuffer",
-        timeout: 30000,
-      });
-      buffer = Buffer.from(res.data);
+      // pass URL directly — Baileys handles download internally
+      img = { url: match };
     } else if (message.type === "imageMessage") {
-      buffer = await message.download();
+      img = await message.download();
     } else if (message.quoted?.type === "imageMessage") {
-      buffer = await message.quoted.download();
+      img = await message.quoted.download();
     } else {
       return message.send("❌ Send image, reply to image, or provide URL");
     }
 
     await message.react("⏳");
     const botJid = jidNormalizedUser(message.conn.user?.id || "");
-    await message.setPp(botJid, buffer);
+    await message.conn.updateProfilePicture(botJid, img);
     await message.react("✅");
     await message.send("✅ Profile picture updated");
   } catch (err) {
@@ -217,11 +226,10 @@ Module({
     const botJid = jidNormalizedUser(message.conn.user?.id || "");
     if (typeof message.conn.removeProfilePicture === "function") {
       await message.conn.removeProfilePicture(botJid);
-    } else if (typeof message.conn.updateProfilePicture === "function") {
-      // fallback: set empty picture if supported
-      await message.conn
-        .updateProfilePicture(botJid, Buffer.alloc(0))
-        .catch(() => null);
+    } else {
+      // Baileys doesn't support remove natively — inform user
+      await message.react("❌");
+      return message.send("❌ Your Baileys version does not support removing profile picture");
     }
     await message.react("✅");
     await message.send("✅ Profile picture removed");
@@ -311,7 +319,7 @@ Module({
   try {
     if (!message.isfromMe) return message.send(theme.isfromMe);
     const myJid = jidNormalizedUser(message.conn.user?.id || "");
-    const status = await message.fetchStatus(myJid).catch(() => null);
+    const status = await message.conn.fetchStatus(myJid).catch(() => null);
     const bioText = status?.status || "_No status set_";
     const setDate = status?.setAt
       ? new Date(status.setAt).toLocaleDateString()
@@ -339,7 +347,7 @@ Module({
       message.mentions?.[0] ||
       message.sender;
     await message.react("⏳");
-    const status = await message.fetchStatus(jid).catch(() => null);
+    const status = await message.conn.fetchStatus(jid).catch(() => null);
     await message.react("✅");
     const bioText = status?.status || "_No bio set_";
     const setDate = status?.setAt
@@ -376,11 +384,11 @@ Module({
     if (message.isGroup) {
       await message.loadGroupInfo();
       const participant = (message.groupParticipants || []).find((p) =>
-        message.areJidsSame ? message.areJidsSame(p.id, jid) : p.id === jid
+        areJidsSame(p.id, jid)
       );
       groupName = participant?.notify || participant?.name || null;
     }
-    const name = message.pushName || groupName || jid.split("@")[0];
+    const name = groupName || jid.split("@")[0];
     await message.reply(
       `╭━━━「 USERNAME INFO 」━━━╮\n┃\n┃ 👤 User: @${
         jid.split("@")[0]
@@ -460,38 +468,8 @@ Module({
     const targetJid = jidNormalizedUser(`${number}@s.whatsapp.net`);
     await message.react("⏳");
 
-    // Prefer instance copyNForward, then exported baileysCopyNForward, then fallback to sendMessage
-    let forwarded = false;
-    try {
-      if (typeof message.conn.copyNForward === "function") {
-        await message.conn.copyNForward(
-          targetJid,
-          message.quoted?.raw ?? message.quoted,
-          true
-        );
-        forwarded = true;
-      } else if (typeof baileysCopyNForward === "function") {
-        // some baileys versions export helper
-        await baileysCopyNForward(
-          message.conn,
-          targetJid,
-          message.quoted?.raw ?? message.quoted,
-          true
-        );
-        forwarded = true;
-      }
-    } catch (e) {
-      console.warn("copyNForward failed, falling back", e?.message || e);
-      forwarded = false;
-    }
-
-    if (!forwarded) {
-      // last resort simple send
-      await message.conn.sendMessage(
-        targetJid,
-        message.quoted?.raw ?? message.quoted
-      );
-    }
+    const msg = message.quoted?.raw ?? message.quoted;
+    await message.conn.sendMessage(targetJid, { forward: msg });
 
     await message.react("✅");
     await message.send(`✅ Message forwarded to @${number}`, {
@@ -522,7 +500,7 @@ Module({
     )?.[1];
     if (!inviteCode) return message.send("❌ Invalid invite link format");
     await message.react("⏳");
-    const info = await message.getInviteInfo(inviteCode);
+    const info = await message.conn.groupGetInviteInfo(inviteCode);
     await message.send(
       `╭━━━「 GROUP INFO 」━━━╮\n┃\n┃ Name: ${info.subject}\n┃ Members: ${
         info.size
@@ -530,7 +508,7 @@ Module({
         info.creation * 1000
       ).toLocaleDateString()}\n┃\n╰━━━━━━━━━━━━━━━━━━╯\n\nJoining group...`
     );
-    await message.joinViaInvite(inviteCode);
+    await message.conn.groupAcceptInvite(inviteCode);
     await message.react("✅");
     await message.send("✅ Successfully joined the group!");
   } catch (err) {
@@ -664,27 +642,6 @@ Module({
 });
 
 Module({
-  command: "delete",
-  package: "owner",
-  aliases: ["del"],
-  description: "Delete bot's message",
-  usage: ".delete <reply to bot message>",
-})(async (message) => {
-  try {
-    if (!message.isfromMe) return message.send(theme.isfromMe);
-    if (!message.quoted)
-      return message.send("❌ Reply to bot's message to delete it");
-    if (!message.quoted.fromMe)
-      return message.send("❌ Can only delete bot's own messages");
-    await message.send({ delete: message.quoted.key });
-    await message.react("✅");
-  } catch (err) {
-    console.error("Delete command error:", err);
-    await message.send("❌ Failed to delete message");
-  }
-});
-
-Module({
   command: "quoted",
   package: "owner",
   aliases: ["q"],
@@ -753,7 +710,7 @@ Module({
       message.sender;
     if (!target) return message.send("❌ Provide a user (reply/tag/number)");
     await message.react("⏳");
-    const url = await message
+    const url = await message.conn
       .profilePictureUrl(target, "image")
       .catch(() => null);
     if (!url) {
@@ -763,8 +720,10 @@ Module({
         { mentions: [target] }
       );
     }
-    await message.sendFromUrl(url, {
+    await message.conn.sendMessage(message.from, {
+      image: { url: url },
       caption: `📷 Profile picture of @${String(target).split("@")[0]}`,
+      mentions: [target],
     });
     await message.react("✅");
   } catch (err) {
@@ -791,8 +750,8 @@ Module({
       message.sender;
     if (!target) return message.send("❌ Provide a user (reply/tag/number)");
     await message.react("⏳");
-    const status = await message.fetchStatus(target).catch(() => null);
-    const ppUrl = await message
+    const status = await message.conn.fetchStatus(target).catch(() => null);
+    const ppUrl = await message.conn
       .profilePictureUrl(target, "image")
       .catch(() => null);
     let roleText = "Member";
@@ -805,7 +764,7 @@ Module({
     }
     const out = [
       `👤 WHOIS: @${String(target).split("@")[0]}`,
-      `• Name: ${message.pushName || String(target).split("@")[0]}`,
+      `• Name: ${String(target).split("@")[0]}`,
       `• Role: ${roleText}`,
       `• Bio: ${status?.status || "_No bio set_"}`,
       `• Profile: ${ppUrl ? "Available" : "Not found"}`,
