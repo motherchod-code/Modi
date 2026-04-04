@@ -285,67 +285,95 @@ Module({
 
 
 
-
-
+//neww
 
 
 Module({
   command: "add",
   package: "group",
-  description: "Add member to group",
-  usage: ".add <number|reply|tag>",
-})(async (message) => {
+  description: "Add one member (admin/owner only)",
+})(async (message, match, m, client) => {
   try {
-    if (!(await checkPermissions(message))) return;
+    // 🔐 Permission check
+    if (!(message.isAdmin || message.isGroupAdmin || message.isfromMe)) {
+      return message.send("❌ _Only admin or bot owner can use this command_");
+    }
 
     const jids = extractMultipleJids(message);
-    if (jids.length === 0) {
-      return message.send(
-        "❌ _Provide user number, tag, or reply_\n\n*Examples:*\n• .add 1234567890\n• .add @user\n• .add 123456 234567 (multiple)\n• Reply to a message"
-      );
+
+    if (!jids?.length) {
+      return message.send("❌ _Provide a user (reply/tag/number)_");
     }
+
+    if (jids.length !== 1) {
+      return message.send("❌ _Only one user allowed_");
+    }
+
+    const jid = jids[0];
+    const number = jid.split("@")[0];
 
     await message.react("⏳");
 
-    const results = await message.addParticipant(jids);
-
-    let successCount = 0;
-    let failedCount = 0;
-    let alreadyInGroup = 0;
-    let privacyBlocked = 0;
-
-    const mentions = [];
-    let responseText = "📊 *Add Results*\n\n";
-
-    // Process results for each JID
-    for (const jid of jids) {
-      const status = results?.[jid]?.status || results?.[0]?.[jid]?.status;
-      const number = jid.split("@")[0];
-      mentions.push(jid);
-
-      if (status === 200 || status === "200") {
-        successCount++;
-        responseText += `✅ @${number} - Added successfully\n`;
-      } else if (status === 403 || status === "403") {
-        privacyBlocked++;
-        responseText += `⚠️ @${number} - Privacy settings block\n`;
-      } else if (status === 409 || status === "409") {
-        alreadyInGroup++;
-        responseText += `ℹ️ @${number} - Already in group\n`;
-      } else {
-        failedCount++;
-        responseText += `❌ @${number} - Failed (${status || "Unknown"})\n`;
-      }
+    // ⚡ Faster retry system
+    let result;
+    for (let i = 0; i < 2; i++) {
+      try {
+        result = await message.addParticipant([jid]);
+        if (result) break;
+      } catch {}
+      await new Promise(r => setTimeout(r, 600));
     }
 
-    responseText += `\n*Summary:*\n• Success: ${successCount}\n• Failed: ${failedCount}\n• Already in: ${alreadyInGroup}\n• Privacy block: ${privacyBlocked}`;
+    const status =
+      result?.[jid]?.status ??
+      result?.[0]?.[jid]?.status ??
+      result?.[jid] ??
+      null;
 
-    await message.react(successCount > 0 ? "✅" : "❌");
-    await message.send(responseText, { mentions });
-  } catch (error) {
-    console.error("Add command error:", error);
+    let text;
+
+    // ✅ SUCCESS
+    if (status == 200) {
+      await message.react("✅");
+      text = `✅ @${number} _Added successfully_`;
+    }
+
+    // ⚠️ PRIVACY BLOCK
+    else if (status == 403) {
+      let inviteLink = "_Invite link unavailable_";
+
+      try {
+        const code = await client.groupInviteCode(message.from);
+        inviteLink = `https://chat.whatsapp.com/${code}`;
+      } catch {}
+
+      // 📩 Send DM (silent fail)
+      client.sendMessage(jid, {
+        text: `👋 You are invited!\n\n🔗 Join Group:\n${inviteLink}`
+      }).catch(() => {});
+
+      await message.react("⚠️");
+      text = `⚠️ @${number} _Privacy block_\n📩 _Invite sent_\n🔗 ${inviteLink}`;
+    }
+
+    // ℹ️ ALREADY IN GROUP
+    else if (status == 409) {
+      await message.react("ℹ️");
+      text = `ℹ️ @${number} _Already in group_`;
+    }
+
+    // ❌ FAILED
+    else {
+      await message.react("❌");
+      text = `❌ @${number} _Failed (${status || "Unknown"})_`;
+    }
+
+    return message.send(text, { mentions: [jid] });
+
+  } catch (err) {
+    console.error("Add command error:", err);
     await message.react("❌");
-    await message.send("❌ _An error occurred while adding member(s)_");
+    return message.send("❌ _Unexpected error occurred_");
   }
 });
 
