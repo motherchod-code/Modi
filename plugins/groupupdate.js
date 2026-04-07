@@ -8,7 +8,8 @@ import { jidNormalizedUser } from "@whiskeysockets/baileys";
 const DEFAULT_GOODBYE = pickRandom(GOODBYE_TEXTS);
 const DEFAULT_WELCOME = pickRandom(WELCOME_TEXTS);
 
-/* ---------------- helpers ---------------- */
+/* ---------------- HELPERS ---------------- */
+
 function toBool(v) {
   if (v === true || v === 1) return true;
   if (v === false || v === 0) return false;
@@ -20,302 +21,214 @@ function toBool(v) {
 function buildText(template = "", replacements = {}) {
   let text = template || "";
   const wantsPp = text.includes("&pp");
+
   text = text.replace(/&pp/g, "").trim();
   text = text.replace(/&mention/g, replacements.mentionText || "");
   text = text.replace(/&name/g, replacements.name || "");
   text = text.replace(/&size/g, String(replacements.size ?? ""));
+
   return { text, wantsPp };
 }
 
 async function fetchProfileBuffer(conn, jid) {
   try {
-    const getUrl =
-      typeof conn.profilePictureUrl === "function"
-        ? () => conn.profilePictureUrl(jid, "image").catch(() => null)
-        : () => Promise.resolve(null);
-    const url = await getUrl();
+    const url = await conn.profilePictureUrl(jid, "image").catch(() => null);
     if (!url) return null;
+
     const res = await axios.get(url, {
       responseType: "arraybuffer",
-      timeout: 20000,
+      timeout: 10000,
     });
+
     return Buffer.from(res.data);
-  } catch (e) {
-    console.error(
-      "[welcome-goodbye] fetchProfileBuffer error:",
-      e?.message || e
-    );
+  } catch {
     return null;
   }
 }
 
-async function sendWelcomeMsg(
-  conn,
-  groupJid,
-  text,
-  mentions = [],
-  imgBuffer = null
-) {
+async function sendMsg(conn, jid, text, mentions = [], img = null) {
   try {
-    if (imgBuffer) {
-      await conn.sendMessage(groupJid, {
-        image: imgBuffer,
-        caption: text,
-        mentions,
-      });
+    if (img) {
+      await conn.sendMessage(jid, { image: img, caption: text, mentions });
     } else {
-      await conn.sendMessage(groupJid, { text, mentions });
+      await conn.sendMessage(jid, { text, mentions });
     }
-  } catch (err) {
-    console.error(
-      "[welcome-goodbye] sendWelcomeMsg primary error:",
-      err?.message || err
-    );
-    // fallback without mentions
+  } catch {
     try {
-      if (imgBuffer)
-        await conn.sendMessage(groupJid, { image: imgBuffer, caption: text });
-      else await conn.sendMessage(groupJid, { text });
-    } catch (e) {
-      console.error(
-        "[welcome-goodbye] sendWelcomeMsg fallback error:",
-        e?.message || e
-      );
-    }
+      if (img) await conn.sendMessage(jid, { image: img, caption: text });
+      else await conn.sendMessage(jid, { text });
+    } catch {}
   }
 }
 
-/* ---------------- COMMANDS (group-level on/off only) ---------------- */
-/*
-  Usage (must be sent inside the group):
-    .welcome on
-    .welcome off
-    .goodbye on
-    .goodbye off
-*/
-Module({
-  command: "welcome",
-  package: "group",
-  description:
-    "Turn per-group welcome ON or OFF (must be used inside the group).",
-})(async (message, match) => {
-  // require group context
-  const groupJid =
-    message.from ||
-    message.chat ||
-    message.key?.remoteJid ||
-    (message.isGroup ? message.isGroup : null);
-  if (!groupJid || !groupJid.includes("@g.us")) {
-    return await message.send?.(
-      "❌ Use this command inside the group to toggle welcome messages."
-    );
-  }
+/* ---------------- OWNER + SUPERADMIN CHECK ---------------- */
 
-  // only on/off supported. ignore custom message
-  const raw = (match || "").trim().toLowerCase();
-  if (!raw) {
-    // read current
-    const botNumber =
-      (message.conn?.user?.id && String(message.conn.user.id).split(":")[0]) ||
-      "bot";
-    const key = `group:${groupJid}:welcome`;
-    const cfg = await db.getAsync(botNumber, key, null);
-    const status = cfg && typeof cfg === "object" ? toBool(cfg.status) : false;
-    return await message.sendreply?.(
-      `Welcome is ${status ? "✅ ON" : "❌ OFF"} for this group.`
-    );
-  }
-
-  if (raw !== "on" && raw !== "off") {
-    return await message.send?.("❌ Invalid option. Use `on` or `off`.");
-  }
-
-  const botNumber =
-    (message.conn?.user?.id && String(message.conn.user.id).split(":")[0]) ||
-    "bot";
-  const key = `group:${groupJid}:welcome`;
-  const cfg = { status: raw === "on" };
-  await db.set(botNumber, key, cfg);
-  await message.react?.("✅");
-  return await message.send(
-    cfg.status
-      ? "✅ Welcome ENABLED for this group"
-      : "❌ Welcome DISABLED for this group"
-  );
-});
-
-Module({
-  command: "goodbye",
-  package: "group",
-  description:
-    "Turn per-group goodbye ON or OFF (must be used inside the group).",
-})(async (message, match) => {
-  const groupJid =
-    message.from ||
-    message.chat ||
-    message.key?.remoteJid ||
-    (message.isGroup ? message.isGroup : null);
-  if (!groupJid || !groupJid.includes("@g.us")) {
-    return await message.send?.(
-      "❌ Use this command inside the group to toggle goodbye messages."
-    );
-  }
-
-  const raw = (match || "").trim().toLowerCase();
-  if (!raw) {
-    const botNumber =
-      (message.conn?.user?.id && String(message.conn.user.id).split(":")[0]) ||
-      "bot";
-    const key = `group:${groupJid}:goodbye`;
-    const cfg = await db.getAsync(botNumber, key, null);
-    const status = cfg && typeof cfg === "object" ? toBool(cfg.status) : false;
-    return await message.sendreply?.(
-      `Goodbye is ${status ? "✅ ON" : "❌ OFF"} for this group.`
-    );
-  }
-
-  if (raw !== "on" && raw !== "off") {
-    return await message.send?.("❌ Invalid option. Use `on` or `off`.");
-  }
-
-  const botNumber =
-    (message.conn?.user?.id && String(message.conn.user.id).split(":")[0]) ||
-    "bot";
-  const key = `group:${groupJid}:goodbye`;
-  const cfg = { status: raw === "on" };
-  await db.set(botNumber, key, cfg);
-  await message.react?.("✅");
-  return await message.send(
-    cfg.status
-      ? "✅ Goodbye ENABLED for this group"
-      : "❌ Goodbye DISABLED for this group"
-  );
-});
-
-/* ---------------- EVENT: group-participants.update ---------------- */
-Module({ on: "group-participants.update" })(async (_msg, event, conn) => {
+async function isOwnerOrSuperAdmin(conn, groupJid, userJid) {
   try {
-    if (
-      !event ||
-      !event.id ||
-      !event.action ||
-      !Array.isArray(event.participants)
-    )
-      return;
-    const groupJid = event.id;
-    const groupName =
-      event.groupName ||
-      (event.groupMetadata && event.groupMetadata.subject) ||
-      "";
-    const groupSize =
-      typeof event.groupSize === "number"
-        ? event.groupSize
-        : event.groupMetadata && Array.isArray(event.groupMetadata.participants)
-        ? event.groupMetadata.participants.length
-        : event.groupMetadata && event.groupMetadata.participants
-        ? event.groupMetadata.participants.length
-        : 0;
+    const meta = await conn.groupMetadata(groupJid);
 
-    // compute botNumber same as commands
-    const botNumber =
-      (conn?.user?.id && String(conn.user.id).split(":")[0]) || "bot";
-    const action = String(event.action).toLowerCase();
-    const botJidFull = jidNormalizedUser(conn?.user?.id);
+    if (meta.owner && meta.owner === userJid) return true;
 
-    for (const p of event.participants) {
-      const participantJid = jidNormalizedUser(
-        typeof p === "string" ? p : p.id || p.jid || ""
-      );
-      if (!participantJid) continue;
-      if (botJidFull && participantJid === botJidFull) continue; // skip bot itself
+    const p = meta.participants.find(x => x.id === userJid);
+    if (p?.admin === "superadmin") return true;
 
-      // WELCOME (add/invite/join)
-      if (action === "add" || action === "invite" || action === "joined") {
-        const key = `group:${groupJid}:welcome`;
-        const cfgRaw = await db.getAsync(botNumber, key, null);
-        const enabled =
-          cfgRaw && typeof cfgRaw === "object" ? toBool(cfgRaw.status) : false;
-        if (!enabled) continue;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
-        const mentionText = `@${participantJid.split("@")[0]}`;
-        const replacements = { mentionText, name: groupName, size: groupSize };
-        const { text, wantsPp } = buildText(DEFAULT_WELCOME, replacements);
+/* ---------------- COMMANDS ---------------- */
 
-        let imgBuf = null;
-        if (wantsPp) imgBuf = await fetchProfileBuffer(conn, participantJid);
+// WELCOME
+Module({ command: "welcome", package: "group" })(async (m, match) => {
+  const jid = m.chat;
+  if (!jid.includes("@g.us")) return m.send("❌ Group only");
 
-        try {
-          await sendWelcomeMsg(conn, groupJid, text, [participantJid], imgBuf);
-        } catch (e) {
-          console.error(
-            "[welcome-goodbye] error sending welcome:",
-            e?.message || e
-          );
-        }
+  const raw = (match || "").toLowerCase().trim();
+  const bot = m.conn.user.id.split(":")[0];
+  const key = `group:${jid}:welcome`;
+
+  if (!raw) {
+    const cfg = await db.getAsync(bot, key, null);
+    return m.sendreply(`Welcome ${cfg?.status ? "✅ ON" : "❌ OFF"}`);
+  }
+
+  if (!["on", "off"].includes(raw)) return m.send("❌ Use on/off");
+
+  await db.set(bot, key, { status: raw === "on" });
+  return m.send(raw === "on" ? "✅ Welcome ON" : "❌ Welcome OFF");
+});
+
+// GOODBYE
+Module({ command: "goodbye", package: "group" })(async (m, match) => {
+  const jid = m.chat;
+  if (!jid.includes("@g.us")) return m.send("❌ Group only");
+
+  const raw = (match || "").toLowerCase().trim();
+  const bot = m.conn.user.id.split(":")[0];
+  const key = `group:${jid}:goodbye`;
+
+  if (!raw) {
+    const cfg = await db.getAsync(bot, key, null);
+    return m.sendreply(`Goodbye ${cfg?.status ? "✅ ON" : "❌ OFF"}`);
+  }
+
+  if (!["on", "off"].includes(raw)) return m.send("❌ Use on/off");
+
+  await db.set(bot, key, { status: raw === "on" });
+  return m.send(raw === "on" ? "✅ Goodbye ON" : "❌ Goodbye OFF");
+});
+
+// ADMINMSG (OWNER + SUPERADMIN)
+Module({ command: "adminmsg", package: "group" })(async (m, match) => {
+  const jid = m.chat;
+  if (!jid.includes("@g.us")) return m.send("❌ Group only");
+
+  const sender = m.sender;
+  const allowed = await isOwnerOrSuperAdmin(m.conn, jid, sender);
+
+  if (!allowed) return m.send("❌ Only owner/superadmin");
+
+  const raw = (match || "").toLowerCase().trim();
+  const bot = m.conn.user.id.split(":")[0];
+  const key = `group:${jid}:adminmsg`;
+
+  if (!raw) {
+    const cfg = await db.getAsync(bot, key, null);
+    return m.sendreply(`AdminMsg ${cfg?.status ? "✅ ON" : "❌ OFF"}`);
+  }
+
+  if (!["on", "off"].includes(raw)) return m.send("❌ Use on/off");
+
+  await db.set(bot, key, { status: raw === "on" });
+  return m.send(raw === "on" ? "✅ AdminMsg ON" : "❌ AdminMsg OFF");
+});
+
+/* ---------------- EVENT ---------------- */
+
+Module({ on: "group-participants.update" })(async (_m, ev, conn) => {
+  try {
+    if (!ev?.id || !ev?.participants) return;
+
+    const jid = ev.id;
+    const bot = conn.user.id.split(":")[0];
+
+    // ⚡ Load once (optimized)
+    const wCfg = await db.getAsync(bot, `group:${jid}:welcome`, null);
+    const gCfg = await db.getAsync(bot, `group:${jid}:goodbye`, null);
+    const aCfg = await db.getAsync(bot, `group:${jid}:adminmsg`, null);
+
+    const welcomeOn = wCfg?.status === true;
+    const goodbyeOn = gCfg?.status === true;
+    const adminOn = aCfg?.status === true;
+
+    const meta = await conn.groupMetadata(jid);
+    const gName = meta.subject;
+    const gSize = meta.participants.length;
+
+    const action = ev.action.toLowerCase();
+    const isJoin = ["add", "invite", "join"].includes(action);
+    const isLeave = ["remove", "leave"].includes(action);
+
+    for (const user of ev.participants) {
+      const uid = jidNormalizedUser(user);
+      const mention = `@${uid.split("@")[0]}`;
+
+      // WELCOME
+      if (isJoin && welcomeOn) {
+        const { text, wantsPp } = buildText(DEFAULT_WELCOME, {
+          mentionText: mention,
+          name: gName,
+          size: gSize,
+        });
+
+        const img = wantsPp
+          ? await fetchProfileBuffer(conn, uid)
+          : null;
+
+        await sendMsg(conn, jid, text, [uid], img);
       }
 
-      // GOODBYE (remove/leave/left/kicked)
-      if (
-        action === "remove" ||
-        action === "leave" ||
-        action === "left" ||
-        action === "kicked"
-      ) {
-        const key = `group:${groupJid}:goodbye`;
-        const cfgRaw = await db.getAsync(botNumber, key, null);
-        const enabled =
-          cfgRaw && typeof cfgRaw === "object" ? toBool(cfgRaw.status) : false;
-        if (!enabled) continue;
+      // GOODBYE
+      if (isLeave && goodbyeOn) {
+        const { text, wantsPp } = buildText(DEFAULT_GOODBYE, {
+          mentionText: mention,
+          name: gName,
+          size: gSize,
+        });
 
-        const mentionText = `@${participantJid.split("@")[0]}`;
-        const replacements = { mentionText, name: groupName, size: groupSize };
-        const { text, wantsPp } = buildText(DEFAULT_GOODBYE, replacements);
+        const img = wantsPp
+          ? await fetchProfileBuffer(conn, uid)
+          : null;
 
-        let imgBuf = null;
-        if (wantsPp) imgBuf = await fetchProfileBuffer(conn, participantJid);
-
-        try {
-          await sendWelcomeMsg(conn, groupJid, text, [participantJid], imgBuf);
-        } catch (e) {
-          console.error(
-            "[welcome-goodbye] error sending goodbye:",
-            e?.message || e
-          );
-        }
+        await sendMsg(conn, jid, text, [uid], img);
       }
 
-      // PROMOTE / DEMOTE (kept as-is)
-      if (action === "promote" || action === "demote") {
-        const owner = botJidFull || null;
-        const ownerMention = owner
-          ? `@${owner.split("@")[0]}`
-          : conn.user?.id
-          ? `@${String(conn.user.id).split(":")[0]}`
-          : "Owner";
-        const actor = event.actor || event.author || event.by || null;
-        const actorText = actor ? `@${actor.split("@")[0]}` : "Admin";
-        const targetText = `@${participantJid.split("@")[0]}`;
-        const actionText = action === "promote" ? "promoted" : "demoted";
-        const sendText = `╭─〔 *🎉 Admin Event* 〕\n├─ ${actorText} has ${actionText} ${targetText}\n├─ Group: ${groupName}\n╰─➤ Powered by ${ownerMention}`;
-        try {
-          const mentions = [actor, participantJid, botJidFull].filter(Boolean);
-          if (owner) mentions.push(owner);
-          await conn.sendMessage(groupJid, { text: sendText, mentions });
-        } catch (e) {
-          console.error(
-            "[welcome-goodbye] promote/demote send error:",
-            e?.message || e
-          );
-          try {
-            await conn.sendMessage(groupJid, { text: sendText });
-          } catch (_) {}
-        }
+      // 👑 ADMIN EVENTS (STYLISH)
+      if (adminOn && (action === "promote" || action === "demote")) {
+        const actor = ev.actor || ev.author || ev.by || null;
+
+        const actorText = actor
+          ? `@${actor.split("@")[0]}`
+          : "Admin";
+
+        const text = `╭─〔 👑 *Admin Update* 〕
+├─ 👤 User: ${mention}
+├─ ⚡ Action: ${
+  action === "promote" ? "Promoted 🟢" : "Demoted 🔴"
+}
+├─ 🏷 Group: ${gName}
+├─ 🛠 By: ${actorText}
+╰─➤ Powered by Rabbitxmd`.trim();
+
+        const mentions = [uid];
+        if (actor) mentions.push(actor);
+
+        await sendMsg(conn, jid, text, mentions);
       }
     }
-  } catch (err) {
-    console.error(
-      "[welcome-goodbye] event handler error:",
-      err?.message || err
-    );
+  } catch (e) {
+    console.error("Event Error:", e);
   }
 });
